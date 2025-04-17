@@ -143,70 +143,72 @@ if __name__ == "__main__":
     theta1 = torch.tensor(20.0, requires_grad=True)
     theta2 = torch.tensor(45.0, requires_grad=True)
     params = [theta1, theta2]
-    optimizer = optim.Adam(params, lr=0.01)     # TODO: test Adam here, try other optimizers later
+    optimizer = optim.Adam(params, lr=0.03)     # TODO: test Adam here, try other optimizers later
 
     # gaussion noise params
-    sigma1 = torch.tensor(2.0)
-    sigma2 = torch.tensor(2.0)
+    sigma1 = torch.tensor(1.0)
+    sigma2 = torch.tensor(1.0)
+    
+    num_batches = 400
+    batech_sizes = 20
+    # apply the policy gradient theorem, monte carlo sampling times = 1000.  
+    for batch_idx in range(1, num_batches+1):
+        batch_terms = []
+        for k in range(batech_sizes):
+            inv = TwoEchelonInv(h1=h1, p1=p1, h2=h2, demand_lambda=demand_lambda, 
+                                init_x1=init_x1, init_w1=init_w1, init_x2=init_x2,
+                                K=K, c=c, c1=c1, seed = batch_idx * batech_sizes + k)
+            state = inv.reset()
+            rewards = []
+            log_probs = []
 
-    # apply the policy gradient theorem, monte carlo sampling times = 1000.
-    num_episodes = 5000      
-    for epi in range(num_episodes):
-        inv = TwoEchelonInv(h1=h1, p1=p1, h2=h2, demand_lambda=demand_lambda, 
-                                           init_x1=init_x1, init_w1=init_w1, init_x2=init_x2,
-                                           K=K, c=c, c1=c1)
-        state = inv.reset()
-        rewards = []
-        log_probs = []
+            for t in range(T):
+                x1, w1, x2 = [torch.tensor(s, dtype=torch.float32, requires_grad=False) for s in state]
+
+                mu1 = relu(theta1 - x1)
+                dist1 = Normal(mu1, sigma1)
+                a1 = dist1.sample()
+                logp1 = dist1.log_prob(a1)
+            
+            
+                mu2 = relu(theta2 - x2)
+                dist2 = Normal(mu2, sigma2)
+                a2 = dist2.sample()
+                logp2 = dist2.log_prob(a2)
+
+                new_state, cost, done = inv.next_step(a1.item(), a2.item())
+                
+                log_probs.append(logp1 + logp2)
+                rewards.append(-cost)
+                state = new_state
+                if done:
+                    break
+
+            G = 0
+            returns = []
+            for r in reversed(rewards):
+                G = r + gamma * G
+                returns.insert(0, G)
+
+            returns = torch.tensor(returns, dtype=torch.float32)
+            returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+
         
-        # assuming there are T period left. 
-        for t in range(T):
-            x1, w1, x2 = [torch.tensor(s, dtype=torch.float32, requires_grad=False) for s in state]
-            
-            mu1 = relu(theta1 - x1)
-            dist1 = Normal(mu1, sigma1)
-            a1 = dist1.sample()
-            logp1 = dist1.log_prob(a1)
-            
-            
-            mu2 = relu(theta2 - x2)
-            dist2 = Normal(mu2, sigma2)
-            a2 = dist2.sample()
-            logp2 = dist2.log_prob(a2)
-
-            new_state, cost, done = inv.next_step(a1.item(), a2.item())
-
-                        
-            log_probs.append(logp1 + logp2)
-            
-            rewards.append(-cost)
-            
-            state = new_state
-            if done:
-                break
-
-        G = 0
-        # reverse the reward list to calc the action value easier.
-        returns = []
-        for r in reversed(rewards):
-            G = r + gamma * G
-            returns.insert(0, G)
-
-        returns = torch.tensor(returns, dtype=torch.float32)
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
-
-        # final loss function in policy gradient theorem.
-        terms = [(- logp * G_t) for logp, G_t in zip(log_probs, returns)]
-        policy_loss = torch.stack(terms).sum()
+            batch_terms += [(- logp * G_t) for logp, G_t in zip(log_probs, returns)]
+        
+        # find the mean of policy loss within its batch.
+        policy_loss = torch.stack(batch_terms).mean()
         
         # clear the previous gradient data.
         optimizer.zero_grad()
-        # calc the gradient. 
+        # calculate the gradient w.r.t. theta. 
         policy_loss.backward()
-
         optimizer.step()
-        if epi % 100 == 0:
-            print(f"[{epi:4d}] loss={policy_loss.item():.3f}  θ1={theta1.item():.2f}  θ2={theta2.item():.2f}")
+
+        if batch_idx % 10 == 0:
+            print(f"[Batch {batch_idx:4d}/{num_batches}] "
+                  f"loss={policy_loss.item():.3f}  "
+                  f"θ1={theta1.item():.2f}  θ2={theta2.item():.2f}")
 
 
 
