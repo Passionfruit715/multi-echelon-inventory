@@ -1,5 +1,5 @@
 """
-Filename: main.py
+Filename: MEIM_batch_version.py (Multi-Echelon Inverntory Management_using batch to update gradient)
 Description: test the convergence on multi-echelon inventory model's convergence on base stock policy.
 Course: ISyE 8803 - Learning and Optimization in Operations
 Contributors: Jinghua Weng, Yitong Wu

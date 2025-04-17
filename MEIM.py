@@ -1,5 +1,5 @@
 """
-Filename: main.py
+Filename: MEIM.py (Multi-Echelon Inverntory Management)
 Description: test the convergence on multi-echelon inventory model's convergence on base stock policy.
 Course: ISyE 8803 - Learning and Optimization in Operations
 Contributors: Jinghua Weng, Yitong Wu
