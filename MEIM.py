@@ -14,7 +14,7 @@ from torch.nn.functional import relu
 from typing import Tuple, Dict, Any
 
 T = 50          # assuming there are T period left.
-gamma = 0.95    # discount factor.
+gamma = 0.7    # discount factor.
 
 class TwoEchelonInv:
     """
@@ -112,7 +112,11 @@ class TwoEchelonInv:
         cost_x1 = self.shortage_storage_cost(self.x1)
         cost_x2 = self.h2 * self.x2
         
+        # change from poisson to bernoulli to test convergence.
         demand = np.random.poisson(demand_lambda)
+        #demand = np.random.choice([10.0, 15.0], p=[0.5, 0.5])
+
+
         self.x1 = self.x1 + self.w1 - demand
         
         self.w1 = min(a1, x2_local)
@@ -128,29 +132,29 @@ class TwoEchelonInv:
 
 if __name__ == "__main__":
     # initialization of variables.
-    h1 = 1.0
+    h1 = 2.0
     p1 = 10.0 
     h2 = 1.0
-    demand_lambda = 5
-    init_x1 = 20.0 
+    demand_lambda = 12
+    init_x1 = 12.0 
     init_w1 = 0.0 
-    init_x2 = 40.0
+    init_x2 = 25.0
     K = 0.0 
     c = 1.0 
     c1 = 1.0
 
     # assuming base stock policy.
-    theta1 = torch.tensor(20.0, requires_grad=True)
+    theta1 = torch.tensor(30.0, requires_grad=True)
     theta2 = torch.tensor(45.0, requires_grad=True)
     params = [theta1, theta2]
-    optimizer = optim.Adam(params, lr=0.01)     # TODO: test Adam here, try other optimizers later
+    optimizer = optim.Adam(params, lr=0.03)     # TODO: test Adam here, try other optimizers later
 
     # gaussion noise params
     sigma1 = torch.tensor(2.0)
     sigma2 = torch.tensor(2.0)
 
     # apply the policy gradient theorem, monte carlo sampling times = 1000.
-    num_episodes = 5000      
+    num_episodes = 20000      
     for epi in range(num_episodes):
         inv = TwoEchelonInv(h1=h1, p1=p1, h2=h2, demand_lambda=demand_lambda, 
                                            init_x1=init_x1, init_w1=init_w1, init_x2=init_x2,
