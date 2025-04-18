@@ -132,7 +132,7 @@ class TwoEchelonInv:
 
 if __name__ == "__main__":
     # initialization of variables.
-    h1 = 2.0
+    h1 = 100.0
     p1 = 10.0 
     h2 = 1.0
     demand_lambda = 12
