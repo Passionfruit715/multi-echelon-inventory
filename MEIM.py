@@ -8,13 +8,14 @@ Created: 2025-4-14, Jinghua Weng
 import numpy as np 
 import math 
 import torch
+from torch._dynamo.utils import to_fake_tensor
 import torch.optim as optim
 from torch.distributions import Normal
 from torch.nn.functional import relu
 from typing import Tuple, Dict, Any
 
 T = 50          # assuming there are T period left.
-gamma = 0.7    # discount factor.
+gamma = 0.98    # discount factor.
 
 class TwoEchelonInv:
     """
@@ -64,7 +65,7 @@ class TwoEchelonInv:
         Return: a 3 dimension array containing state variables(np.ndarray)  
         """
         self.x1 = self.init_x1
-        self.w1 = self.init_x2
+        self.w1 = self.init_w1
         self.x2 = self.init_x2
         self.t = 0
 
@@ -95,39 +96,62 @@ class TwoEchelonInv:
         """
         return self.h1 * x if x >= 0 else self.p1 * (-x)
 
-    def next_step(self, a1: float, a2: float) -> Tuple[np.ndarray, float, bool]:
+    def next_step(self, a1: float, a2: float, sig1: float, sig2: float, theta1: torch.Tensor, theta2: torch.Tensor) -> Tuple[list[torch.Tensor], torch.Tensor, list[torch.Tensor], float, bool]:
         """
         calculate the total cost of current time step, and update the new state variables.
 
         Args:
         a1: order request of installation 1 to be delivered at the beginning of next period.
         a2: order request of installation 2 to be delivered at the beginning of next period.
+        sig1: variance info of base stock policy for echelon 1 (Gaussion distribution).
+        sig2: variance info of base stock policy for echelon 2 (Gaussion distribution).
 
         Return:
         new states variables and the current step cost.
         """
-        # 
-        x2_local = self.x2 - self.w1 - self.x1
-        
-        cost_x1 = self.shortage_storage_cost(self.x1)
-        cost_x2 = self.h2 * self.x2
-        
-        # change from poisson to bernoulli to test convergence.
-        demand = np.random.poisson(demand_lambda)
-        #demand = np.random.choice([10.0, 15.0], p=[0.5, 0.5])
+        state = [self.x1, self.w1, self.x2]
+        x1, w1, x2 = [torch.tensor(s, dtype=torch.float32, requires_grad=False) for s in state]
+        # step 1: recevie the items ordered from last period and after receive, set w1 = 0 for now.
+        x1 = x1 + w1
+        x2 = x2 + a2
+        w1 = torch.Tensor()
 
-
-        self.x1 = self.x1 + self.w1 - demand
+        # step 2: compute the local stock on hand of x2.
+        x2_local: torch.Tensor = x2 - x1
+    
+        # step 3: compute the order quantity that will receive in next period, assume time lag = 1.
+        mu1     = relu(theta1 - x1)
+        mu2     = relu(theta2 - x2)
         
-        self.w1 = min(a1, x2_local)
-        cost_w1 = self.c1 * self.w1
-        total_period_cost = cost_x1 + cost_x2 + cost_w1
+        dist1 = Normal(mu1, sig1)
+        dist2 = Normal(mu2, sig2)
 
-        self.x2 = self.x2  - demand + a2
-        next_state = np.array([self.x1, self.w1, self.x2], dtype=np.float32)         
+        a1_new = dist1.sample()
+        a2_new = dist2.sample()
+        logp1 : torch.Tensor = dist1.log_prob(a1_new)
+        logp2: torch.Tensor = dist2.log_prob(a2_new)
+        logp: torch.Tensor = logp1 + logp2
+
+        # step 4: compute the order quantity in transit, arrive at installation 1 next period.
+        w1 = torch.min(x2_local, a1_new)
+
+        # step 5: simulate the demand as a poisson distribution.
+        # demand : torch.Tensor = torch.tensor(np.random.poisson(demand_lambda), requires_grad=False)
+        demand = 5
+        x2 = x2 - demand
+        x1 = x1 - demand
+
+        # step 6: compute the cost.
+        cost_x2 = self.h2 * x2.item()
+        cost_x1 = self.shortage_storage_cost(x1.item())
+        cost_w1 = self.c1 + w1.item()
+
+        step_total_cost = cost_x1 + cost_w1 + cost_x2
+
+        next_state = [x1, w1, x2]
 
         done = (self.t >= T)
-        return (next_state, total_period_cost, done)
+        return (next_state, logp, [a1_new, a2_new], step_total_cost, done)
 
 
 if __name__ == "__main__":
@@ -165,22 +189,25 @@ if __name__ == "__main__":
         
         # assuming there are T period left. 
         for t in range(T):
-            x1, w1, x2 = [torch.tensor(s, dtype=torch.float32, requires_grad=False) for s in state]
-            
-            mu1 = relu(theta1 - x1)
-            dist1 = Normal(mu1, sigma1)
-            a1 = dist1.sample()
-            logp1 = dist1.log_prob(a1)
-            
-            
-            mu2 = relu(theta2 - x2)
-            dist2 = Normal(mu2, sigma2)
-            a2 = dist2.sample()
-            logp2 = dist2.log_prob(a2)
+            a1 = 0 
+            a2 = 0
+            next_state, logp, act_new, cost, done = self.next_step()
+           # x1, w1, x2 = [torch.tensor(s, dtype=torch.float32, requires_grad=False) for s in state]
+           # 
+           # mu1 = relu(theta1 - x1)
+           # dist1 = Normal(mu1, sigma1)
+           # a1 = dist1.sample()
+           # logp1 = dist1.log_prob(a1)
+           # 
+           # 
+           # mu2 = relu(theta2 - x2)
+           # dist2 = Normal(mu2, sigma2)
+           # a2 = dist2.sample()
+           # logp2 = dist2.log_prob(a2)
 
-            new_state, cost, done = inv.next_step(a1.item(), a2.item())
+           # new_state, cost, done = inv.next_step(a1.item(), a2.item())
 
-                        
+                         
             log_probs.append(logp1 + logp2)
             
             rewards.append(-cost)
