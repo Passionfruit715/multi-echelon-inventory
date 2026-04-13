@@ -2,8 +2,7 @@
 
 A reinforcement learning approach to multi-echelon inventory control, comparing REINFORCE and Actor-Critic algorithms against classical base-stock policies.
 
-**Course**: ISyE 8803 - Learning and Optimization in Operations (Georgia Tech)  
-**Contributors**: Jinghua Weng, Yitong Wu  
+**Course**: ISyE 8803 - Learning and Optimization in Operations (Georgia Tech)   
 **Date**: January - April 2025
 
 ## Problem
