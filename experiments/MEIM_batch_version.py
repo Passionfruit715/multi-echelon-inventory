@@ -64,7 +64,7 @@ class TwoEchelonInv:
         Return: a 3 dimension array containing state variables(np.ndarray)  
         """
         self.x1 = self.init_x1
-        self.w1 = self.init_x2
+        self.w1 = self.init_w1
         self.x2 = self.init_x2
         self.t = 0
 
@@ -112,7 +112,7 @@ class TwoEchelonInv:
         cost_x1 = self.shortage_storage_cost(self.x1)
         cost_x2 = self.h2 * self.x2
         
-        demand = np.random.poisson(demand_lambda)
+        demand = np.random.poisson(self.demand_lambda)
         self.x1 = self.x1 + self.w1 - demand
         
         self.w1 = min(a1, x2_local)
